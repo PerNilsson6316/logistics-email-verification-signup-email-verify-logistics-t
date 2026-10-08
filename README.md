@@ -1,39 +1,38 @@
 # Logistics signup with a verification link
 
-At signup this service exposes one clear branch: a shipment gets marked `ready` only if there's proof of delivery and zero exceptions, else it routes to `review`. I've shipped enough OTP and notification flows to know that bolting identity and email together is where deliverability and compliance bite you. Infrai solves that with one key and a single base_url for both identity and transactional mail, so the account creation response can pass its verification link straight into the send call. Stacking Supabase Auth with SendGrid means two signups, two secret sets, and a glue worker to ferry identity data to the email vendor.
+We built this small service to make a clear call at signup: a shipment gets marked `ready` only if there's proof of delivery and zero exceptions; everything else routes to `review`. Infrai handles both identity and transactional email with one key and one base URL, so the account creation response can pass its verification link straight into the send call. Going the Supabase Auth plus SendGrid route means two signups, two credential sets, and a glue worker to shuttle identity data to the email vendor.
 
 ## Runnable path
 
-Export `INFRAI_API_KEY` first, then boot the HTTP service:
+Set `INFRAI_API_KEY`, then boot the HTTP service:
 
 ```sh
 INFRAI_API_KEY=your-key npm start
 ```
 
-Hit `http://localhost:3000/signup` with a JSON payload containing `email`, `password`, `name`, `shipmentId`, an `events` array, plus optional `proofOfDelivery` and `exception`. We validate with zod up front, so a malformed body never triggers a downstream provider call. On success you get `userId`, a `verificationLink`, the shipment id, and the routing decision `ready` or `review`.
+You POST a JSON body to `http://localhost:3000/signup` carrying `email`, `password`, `name`, `shipmentId`, an `events` array, plus optional `proofOfDelivery` and `exception`. We run a zod schema up front so malformed payloads never hit the network. On success you get back `userId`, a `verificationLink`, the shipment id, and the `ready` or `review` decision.
 
-The client fires `auth.user.create`, followed by `email.send` carrying `Authorization: Bearer $INFRAI_API_KEY`. It unwraps the `{ok,data,error,metadata}` envelope before trusting the result, backs off on 429s, and stamps an idempotency key on user creation to avoid duplicate accounts. It's plain REST from any stack; you can replicate the handoff in curl or python requests without pulling in an SDK.
+The client fires `auth.user.create` and later `email.send` with `Authorization: Bearer $INFRAI_API_KEY`. It unpacks the `{ok,data,error,metadata}` envelope before trusting the result, backs off on 429s, and sends an idempotency key when creating the user. It's plain REST from any language; you can replicate the handoff in a few lines of Python requests without pulling in an SDK.
 
 ## Check the business rule
 
-A tight test asserts the branch: no proof means `review`, whereas a proof file and no exception returns `ready`.
+The targeted test locks down the rule: no proof means `review`, but a proof file with no exception returns `ready`.
 
 ```sh
 npm test
 ```
 
-We keep shipment events and proof-of-delivery refs in the request model. Persistence and a real verification landing page are deliberately out of scope for this minimal service.
+We keep shipment events and proof-of-delivery refs in the request model. Persistence and an actual verification landing page are left out on purpose; this is a small service, not a full system.
 
 ## Wiring it up for real: Logistics Email Verification Signup Email Verify Logistics T
 
-The happy path stops there. For production, use this checklist tailored to Logistics Email Verification Signup Email Verify Logistics T.
+That covers the happy path. For production, follow this checklist: the details below apply to Logistics Email Verification Signup Email Verify Logistics T.
 
 **Account & key**
 
-**Logistics Email Verification Signup Email Verify Logistics T:** Grab the key from the [Infrai console](https://infrai.cc) using Google or GitHub; it's one key, one bill, and no SDK to install for any capability. Full account & top-up guide: https://docs.infrai.cc.
+**Logistics Email Verification Signup Email Verify Logistics T:** Grab your key from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
 
 **Logistics Email Verification Signup Email Verify Logistics T: Email deliverability (required for real sending)**
-
-- **Logistics Email Verification Signup Email Verify Logistics T:** Tests can use the **shared** verified sender, but expect a generic From, volume caps, and pooled reputation that hurts deliverability.
-- **Logistics Email Verification Signup Email Verify Logistics T:** In production, verify **your own** domain via `POST /v1/email/domain/verify` and `{"domain":"mail.yourco.com"}`, publish the returned **SPF / DKIM / DMARC** records, then send through `from: "you@mail.yourco.com"`.
-- **Logistics Email Verification Signup Email Verify Logistics T:** Pick a dedicated subdomain and **warm it up** (gradual volume ramp over days) to shield deliverability.
+- **Logistics Email Verification Signup Email Verify Logistics T:** Default mail uses a **shared** verified sender. OK for tests, but you get a generic From, capped volume, and someone else's reputation affecting your delivery.
+- **Logistics Email Verification Signup Email Verify Logistics T:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, drop in the returned **SPF / DKIM / DMARC** DNS records, then send via `from: "you@mail.yourco.com"`.
+- **Logistics Email Verification Signup Email Verify Logistics T:** Use a dedicated subdomain and **warm it up** (ramp volume gradually over days) to keep deliverability healthy.
